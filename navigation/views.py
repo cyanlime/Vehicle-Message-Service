@@ -1,4 +1,4 @@
-import json
+import json, datetime
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.views.decorators.http import require_http_methods
@@ -6,7 +6,9 @@ from account.common import (
     fetch_token,
     render_bad_request_response,
     get_vehicle_by_id, 
-    vehicle_token_authenticate
+    vehicle_token_authenticate,
+    get_wechat_by_id, 
+    wechat_token_authenticate
     )
 from django.views.decorators.csrf import csrf_exempt
 from .models import Point
@@ -38,9 +40,11 @@ def sync_points(request):
             return render_bad_request_response(101, 'Incorrect data format')
         lat = point.get('lat', None)
         lon = point.get('lon', None)
-        if lat is None or lon is None:
+        time = point.get('time', None)
+        if lat is None or lon is None or time is None:
             return render_bad_request_response(101, 'Incorrect data format')
-        points.append(Point(vehicle=vehicle, latitude=lat, longitude=lon))
+        time = datetime.datetime.fromtimestamp(int(time))
+        points.append(Point(vehicle=vehicle, latitude=lat, longitude=lon, time=time))
     Point.objects.bulk_create(points)
     json_context = json.dumps({
         'errcode': 0,
@@ -49,4 +53,33 @@ def sync_points(request):
     return HttpResponse(
         json_context, content_type='application/json'
     )
-        
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def current_point(request):
+    token = fetch_token(request)
+    if token is None:
+        return render_bad_request_response(301, 'Missing authorization header')
+    (wechat_id, err) = wechat_token_authenticate(token)
+    if err is not None:
+        return render_bad_request_response(302, err)
+    wechat = get_wechat_by_id(wechat_id)
+    if wechat.vehicle is None:
+        return render_bad_request_response(201, 'No related vehicle found')
+    point = Point.objects.filter(vehicle=wechat.vehicle).order_by('-time').first()
+    if point is None:
+        json_context = json.dumps({
+            'errcode': 100,
+            'errmsg': 'No data found'
+        })
+    else:
+        json_context = json.dumps({
+            'errcode': 0,
+            'point': {
+                'lat': point.latitude,
+                'lon': point.longitude
+            }
+        })
+    return HttpResponse(
+        json_context, content_type='application/json'
+    )

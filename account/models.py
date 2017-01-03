@@ -7,6 +7,24 @@ from django.db import models
 class Vehicle(models.Model):
     vin = models.CharField(max_length=200, unique=True, null=False, blank=False)
     code = models.CharField(max_length=200, null=False, blank=False)
+    def __unicode__(self):
+        return unicode(self.vin)
 
 class WeChat(models.Model):
     openid = models.CharField(max_length=200, unique=True, null=False, blank=False)
+    vehicle = models.ForeignKey('Vehicle', on_delete=models.SET_NULL, null=True, blank=False)
+    def __unicode__(self):
+        return unicode(self.openid)
+
+    class Meta:
+        verbose_name = 'WeChat'
+
+
+class Article(models.Model):
+    key = models.CharField(max_length=200, null=False, blank=False)
+    title = models.CharField(max_length=200, null=False, blank=False)
+    desc = models.CharField(max_length=200, null=False, blank=False)
+    image = models.ImageField(upload_to='articles', null=False)
+    url = models.CharField(max_length=200, null=False, blank=False)
+    def __unicode__(self):
+        return unicode(self.title)

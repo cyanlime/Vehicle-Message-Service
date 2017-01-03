@@ -27,6 +27,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
+APPEND_SLASH = False
 
 # Application definition
 
@@ -120,3 +121,17 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.10/howto/static-files/
 
 STATIC_URL = '/static/'
+
+# Media root
+# https://docs.djangoproject.com/es/1.9/ref/settings/#std:setting-MEDIA_ROOT
+
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Media Url
+# https://docs.djangoproject.com/es/1.9/ref/settings/#media-url
+
+MEDIA_URL = '/media/'
+
+# Custom website root dir
+
+WEB_ROOT = os.path.join(BASE_DIR, 'web')

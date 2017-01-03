@@ -1,19 +1,20 @@
 """ Expose Common Methods
 """
 
-import json
-import datetime
+import json, datetime
 from django.http import HttpResponse
 from django.core.exceptions import ObjectDoesNotExist
-from .utils import decode_token
-from .models import Vehicle
+from . import wechat
+from . import settings
+from .utils import encode_token, decode_token
+from .models import Vehicle, WeChat
 
 ### views methods
 
 def fetch_token(request):
     return request.META.get('HTTP_AUTHORIZATION', None)
 
-def render_bad_request_response(self, errcode=100, errmsg='Bad Request'):
+def render_bad_request_response(errcode=100, errmsg='Bad Request'):
     json_context = json.dumps({
         'errcode': errcode,
         'errmsg': errmsg
@@ -27,6 +28,12 @@ def render_bad_request_response(self, errcode=100, errmsg='Bad Request'):
 def get_vehicle_by_id(id):
     try:
         return Vehicle.objects.get(pk=id)
+    except ObjectDoesNotExist:
+        return None
+
+def get_wechat_by_id(id):
+    try:
+        return WeChat.objects.get(pk=id)
     except ObjectDoesNotExist:
         return None
 
@@ -56,7 +63,17 @@ def wechat_token_authenticate(token):
     id = payload.get('user_id', -1)
     return (id, None)
 
-def wechat_authenticate(request):
-    """ Through Web OAuth mechanism fetch wechat user info
+def wechat_authenticate(code):
+    """ Through Web OAuth mechanism fetch openid and return WeChat user token
     """
-    code = request.GET.get('code', None)
+    ((web_access_token, openid), err) = wechat.fetch_web_access_token(
+        settings.APP_ID, settings.APP_SECRET, code)
+    if err is not None:
+        return (None, err)
+    try:
+        instance = WeChat.objects.get(openid=openid)
+    except ObjectDoesNotExist:
+        return (None, 'WeChat user not found')
+    token = encode_token(instance.id, 'wechat')
+    return (token, None)
+

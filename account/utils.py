@@ -1,11 +1,12 @@
 """ Tool Methods
 """
 
-import datetime, jwt
+import os, datetime, urlparse, jwt
 from jwt.exceptions import DecodeError, ExpiredSignatureError
 from django.conf import settings as django_settings
 from . import settings
-from .models import Vehicle
+from . import wechat
+from .models import Vehicle, Article
 
 def encode_token(id, type_):
     payload = {
@@ -39,3 +40,17 @@ def vehicle_authenticate(credentials):
     if created or instance.code == code:
         return instance.pk
     return None
+
+def get_articles(key):
+    """ Fetch articles from database based on key
+    """
+    articles = Article.objects.filter(key=key)
+    objs = []
+    for article in articles:
+        path = os.path.join(django_settings.MEDIA_URL, article.image.url)
+        image_url = urlparse.urljoin(settings.HOSTNAME_WITH_SCHEMA, path)
+        obj = wechat.Article(
+            title=article.title, desc=article.desc, 
+            image=image_url, url=article.url)
+        objs.append(obj)
+    return objs

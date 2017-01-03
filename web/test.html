@@ -1,0 +1,61 @@
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Test</title>
+    <script type="text/javascript" src="./scripts/zepto.min.js"></script>
+</head>
+<body>
+    <p id="console"></p>
+    <p id="console2"></p>
+    <script type="text/javascript">
+        function getQueryString(name) { 
+            var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)", "i"); 
+            var r = window.location.search.substr(1).match(reg); 
+            if (r != null) return unescape(r[2]); return null; 
+        } 
+
+        function getCurrentPoint(token){
+            $.ajax({
+                type: 'GET',
+                url: '/nav/current_point/',
+                headers: {
+                    'Authorization': token
+                },
+                success: function(response){
+                    $('#console2').text(JSON.stringify(response));
+                }
+            });
+        }
+
+        window.onload = function(){
+            var code = getQueryString('code');
+            if(code == undefined){
+                return;
+            }
+            var data = JSON.stringify({
+                    code: code
+                });
+            $.ajax({
+                type: 'POST',
+                url: '/account/wechat_sign_in/',
+                data: data,
+                dataType: 'json',
+                contentType: 'application/json',
+                success: function(response){
+                    $('#console').text(JSON.stringify(response));
+                    var token = response.token;
+                    if(token == undefined){
+                        return;
+                    }
+                    getCurrentPoint(token);
+                }
+            });
+            // $.ajax('/account/wechat_sign_in/', {
+            //     code: code
+            // }, function(response){
+            //     $('#console').text(response);
+            // });
+        }
+    </script>
+</body>
+</html>

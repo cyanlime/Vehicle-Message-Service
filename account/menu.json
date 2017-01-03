@@ -1,0 +1,39 @@
+{
+    "button": [
+        {
+            "name": "远程控制",
+            "sub_button": [
+                {
+                    "type": "view",
+                    "name": "查询位置",
+                    "url": "http://@@HOSTNAME/navigation/location/"
+                },
+                {
+                    "name": "快速导航",
+                    "type": "location_select",
+                    "key": "rselfmenu_2_0"
+                },
+                {
+                    "type": "view",
+                    "name": "行驶轨迹",
+                    "url": "http://@@HOSTNAME/navigation/path/"
+                },
+                {
+                    "type": "click",
+                    "name": "我的设备",
+                    "key": "devices"
+                }
+            ]
+        },
+        {
+            "type": "view",
+            "name": "流量卡",
+            "url": "http://@@HOSTNAME/traffic/"
+        },
+        {
+            "type": "click",
+            "name": "更多服务",
+            "key": "more"
+        }
+    ]
+}
