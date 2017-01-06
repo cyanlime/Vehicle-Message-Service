@@ -3,7 +3,7 @@ import xml.etree.cElementTree as ET
 from django.conf import settings
 from django.shortcuts import render
 from django.views import View
-from django.http import HttpResponse, FileResponse
+from django.http import HttpResponse, FileResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.core.exceptions import ObjectDoesNotExist
 from jwt.exceptions import InvalidKeyError
@@ -11,7 +11,8 @@ from django.views.decorators.csrf import csrf_exempt
 from .common import (
     fetch_token,
     render_bad_request_response,
-    get_vehicle_by_id, 
+    get_vehicle_by_id,
+    get_wechat_by_id,
     vehicle_token_authenticate,
     wechat_authenticate
     )
@@ -19,6 +20,7 @@ import wechat
 from . import settings
 from . import utils
 from .models import Vehicle, WeChat
+import datetime, time
 
 # Create your views here.
 
@@ -32,12 +34,17 @@ def vehicle_sign_in(request):
         request_json = json.loads(request.body)
     except ValueError:
         return render_bad_request_response(101, 'Incorrect json format')
-    id = utils.vehicle_authenticate(request_json)
-    if id is None:
+    (id, timestamp_vehicle_createtime) = utils.vehicle_authenticate(request_json)
+    if (id, timestamp_vehicle_createtime) is None:
         return render_bad_request_response(201, 'Invalid vehicle credentials')
     token = utils.encode_token(id, 'vehicle')
     json_context = json.dumps({
-        'token': token
+        'code': 0,
+        'result': {
+            'create_time': timestamp_vehicle_createtime,
+            'vin': id,
+            'token': token
+        }
     })
     return HttpResponse(
         json_context, content_type='application/json'
@@ -86,7 +93,7 @@ def show_bind_qrcode(request):
     return response
     
 class WeChatEventsView(View):
-    
+       
     http_method_names = ['get', 'post']
 
     @csrf_exempt
@@ -105,29 +112,40 @@ class WeChatEventsView(View):
             return render_bad_request_response(-1, "Bad Request")
         return HttpResponse(echostr)
 
-    def handle_bind(self, from_username, scene_id):
+    def handle_bind(self, from_username, scene_id):  
         instance, created = WeChat.objects.get_or_create(openid=from_username)
         try:
             vehicle = Vehicle.objects.get(pk=scene_id)
         except ObjectDoesNotExist:
             return render_bad_request_response(-1, "Register vehicle not found")
-        instance.vehicle = vehicle
-        instance.save()
-        json_context = json.dumps({
-            'ok': 1
-        })
-        return HttpResponse(
-            json_context, content_type='application/json'
-        )
 
+        if instance.bind is False:
+            instance.vehicle = vehicle
+            instance.bind = True
+            instance.save()
+            xml = wechat.create_text_msg(from_username, to_username, 
+                '您已成功绑定车机XXXXXX')    
+        else:
+            xml = wechat.create_text_msg(from_username, to_username, 
+                '您已经绑定了车机XXXXXX,如需绑定该车机，请先解绑您已绑定的车机')
+        if xml is not None:
+            return HttpResponse(
+                xml, content_type='text/xml'
+            )
+        return HttpResponse('')
+       
     def handle_subscribe(self, from_username):
         instance, created = WeChat.objects.get_or_create(openid=from_username)
-        json_context = json.dumps({
-            'ok': 1
-        })
-        return HttpResponse(
-            json_context, content_type='application/json'
-        )
+        xml = wechat.create_text_msg(from_username, to_username, 
+                '感谢您关注XX！/n  这里可以帮您把手机和车机绑定的一起哦。/n'
+                '点击远程控制可查看车机相关信息，查看车的位置、轨迹，发送目的地给车机。/n'
+                '流量卡可助您快速充值，实时了解流量使用情况。/n'
+                '您当前尚未绑定设备哦，如需绑定，点击扫一扫，对准设备上的二维码即可！”。')
+        if xml is not None:
+            return HttpResponse(
+                xml, content_type='text/xml'
+            )
+        return HttpResponse('')
 
     def handle_click(self, from_username, to_username, event_key):
         if event_key == 'more':
@@ -187,3 +205,60 @@ class WeChatEventsView(View):
         if err is not None:
             return render_bad_request_response(-1, "Bad Request")
         return self.parse_xml(xml)
+
+@csrf_exempt
+def bound_vehicles(request):
+    
+    token = fetch_token(request)
+    if token is None:
+        return render_bad_request_response(301, 'Missing authorization header')
+    (vehicle_id, err) = vehicle_token_authenticate(token)
+    if err is not None:
+        return render_bad_request_response(302, err)
+    vehicle = get_vehicle_by_id(vehicle_id)
+    if vehicle is None:
+        return render_bad_request_response(303, 'Register vehicle not found')
+
+    vehicle_vin = vehicle.vin
+    vehicle_create_time = vehicle.create_time
+    timestamp_vehicle_create_time = time.mktime(vehicle_create_time.timetuple())
+
+    binding_wxuser = utils.synwxuserinfo(vehicle_id)
+    bundled_accounts = {'code': 0, 'result': {'vehicle_id': vehicle_id,
+        'create_time': timestamp_vehicle_create_time, 'vin': vehicle_vin, 'WXUsers': binding_wxuser}}
+    return JsonResponse(bundled_accounts)
+
+@csrf_exempt
+def remove_binding(request):
+    token = fetch_token(request)
+    if token is None:
+        return render_bad_request_response(301, 'Missing authorization header')
+    (vehicle_id, err) = vehicle_token_authenticate(token)
+    if err is not None:
+        return render_bad_request_response(302, err)
+    vehicle = get_vehicle_by_id(vehicle_id)
+    if vehicle is None:
+        return render_bad_request_response(303, 'Register vehicle not found')
+
+    try:
+        request_json = json.loads(request.body)
+    except ValueError:
+        return render_bad_request_response(101, 'Incorrect json format')
+    wechat_id = request_json.get('wechat_id')
+    if len(wechat_id)==0:
+        unbinding_accounts = {'code': 1, 'result': {'errmsg': "Incoming parameter value wechat_id missing."}}
+        return JsonResponse(unbinding_accounts)
+    
+    wechat = get_wechat_by_id(wechat_id)
+    if wechat is None:
+        return render_bad_request_response(303, 'Wechat user not found')
+
+    if wechat.vehicle.id==vehicle_id and wechat.bind==True:
+        wechat.bind = False
+        wechat.save()
+        unbinding_accounts = {'code': 0, 'result': {'msg': "Remove binding successfully."}}
+        return JsonResponse(unbinding_accounts)
+    else:
+        unbinding_accounts = {'code': 1, 'result': {'errmsg': "WXUser doesn't bind to the vehicle."}}
+        return JsonResponse(unbinding_accounts)
+

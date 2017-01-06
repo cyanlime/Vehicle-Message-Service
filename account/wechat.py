@@ -10,9 +10,10 @@ from Crypto.Cipher import AES
 
 wechat_access_token_url = 'https://api.weixin.qq.com/cgi-bin/token?grant_type=' \
     'client_credential&appid=%s&secret=%s'
+wechat_userinfo_url = 'https://api.weixin.qq.com/cgi-bin/user/info?access_token=%s&openid=%s&lang=zh_CN'
 wechat_web_access_token_url = 'https://api.weixin.qq.com/sns/oauth2/access_token?appid=' \
     '%s&secret=%s&code=%s&grant_type=authorization_code'
-wechat_userinfo_url = 'https://api.weixin.qq.com/sns/userinfo?access_token=%s&openid=%s&lang=zh_CN'
+wechat_web_userinfo_url = 'https://api.weixin.qq.com/sns/userinfo?access_token=%s&openid=%s&lang=zh_CN'
 wechat_qrcode_url = 'https://api.weixin.qq.com/cgi-bin/qrcode/create?access_token=%s'
 wechat_qrcode_show_url = 'https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=%s'
 wechat_menu_create_url = 'https://api.weixin.qq.com/cgi-bin/menu/create?access_token=%s'
@@ -24,13 +25,13 @@ cache_access_token = None
 class Expirable(object):
     def __init__(self, val, expire_time):
         self.value = val
-        self.expire_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=expire_time)
+        self.expire_time = datetime.datetime.now() + datetime.timedelta(seconds=expire_time)
 
     def val(self):
         return self.value
 
     def is_expired(self):
-        return self.expire_time < datetime.datetime.utcnow()
+        return self.expire_time < datetime.datetime.now()
 
 def generate_redirect_uri(redirect_uri, appid, state, scope='snsapi_base'):
     """ Generate WeChat OAuth redirect uri
@@ -60,10 +61,10 @@ def fetch_web_access_token(appid, appsecret, code):
         return ((None, None), 'Unknown Error')
     return ((access_token, openid), None)
 
-def fetch_userinfo(web_access_token, openid):
+def fetch_web_userinfo(access_token, openid):
     """ Through web access token fetch user info
     """
-    request_url = wechat_userinfo_url % (web_access_token, openid)
+    request_url = wechat_web_userinfo_url % (web_access_token, openid)
     try:
         resp = requests.get(request_url)
     except requests.RequestException:
@@ -102,6 +103,24 @@ def fetch_access_token(appid, appsecret):
             return (None, 'Unknown Error')
         cache_access_token = Expirable(access_token, expires_in)
     return (cache_access_token.val(), None)
+
+def fetch_userinfo(access_token, openid):
+    """ Through web access token fetch user info
+    """
+    request_url = wechat_userinfo_url % (access_token, openid)
+    try:
+        resp = requests.get(request_url)
+    except requests.RequestException:
+        return (None, 'Failed to connect to WeChat server')
+    try:
+        request_json = resp.json()
+    except ValueError:
+        return (None, 'Unable to parse the response data from WeChat server')
+    errcode = request_json.get('errcode', None)
+    if errcode is not None:
+        errmsg = request_json.get('errmsg', 'Unknown Error')
+        return (None, errmsg)
+    return (request_json, None)
 
 def generate_temp_qrcode(access_token, scene_id):
     """ Through access_token and scene_id generate QRCode 
@@ -250,3 +269,22 @@ def create_complex_msg(openid, wechat_id, articles):
     return xml.replace('@@ARTICLES', ''.join(items))
 
     
+text_msg_template = """<xml>
+    <ToUserName><![CDATA[@@TO_USERNAME]]></ToUserName>
+    <FromUserName><![CDATA[@@FROM_USERNAME]]></FromUserName>
+    <CreateTime>@@CREATE_TIME</CreateTime>
+    <MsgType><![CDATA[text]]></MsgType>
+    <Content><![CDATA[@@CONTENT]]></Content>
+</xml>"""
+
+def create_text_msg(openid, wechat_id, content):
+    """ Create WeChat text message
+    """
+    if content is None:
+        return None
+    xml = text_msg_template.replace('@@TO_USERNAME', openid)
+    xml = xml.replace('@@FROM_USERNAME', wechat_id)
+    now = int((datetime.datetime.now() - datetime.datetime(1970, 1, 1)).total_seconds())
+    xml = xml.replace('@@CREATE_TIME', str(now))
+    xml = xml.replace('@@CONTENT', content)
+    return xml
