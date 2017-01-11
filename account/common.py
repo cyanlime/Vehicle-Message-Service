@@ -76,4 +76,3 @@ def wechat_authenticate(code):
         return (None, 'WeChat user not found')
     token = encode_token(instance.id, 'wechat')
     return (token, None)
-

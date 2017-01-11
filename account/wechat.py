@@ -6,31 +6,34 @@ import datetime, json, hashlib, base64, socket, struct
 import requests
 import xml.etree.cElementTree as ET
 from Crypto.Cipher import AES
-
+import uuid, time
 
 wechat_access_token_url = 'https://api.weixin.qq.com/cgi-bin/token?grant_type=' \
     'client_credential&appid=%s&secret=%s'
+wechat_userinfo_url = 'https://api.weixin.qq.com/cgi-bin/user/info?access_token=%s&openid=%s&lang=zh_CN'
 wechat_web_access_token_url = 'https://api.weixin.qq.com/sns/oauth2/access_token?appid=' \
     '%s&secret=%s&code=%s&grant_type=authorization_code'
-wechat_userinfo_url = 'https://api.weixin.qq.com/sns/userinfo?access_token=%s&openid=%s&lang=zh_CN'
+wechat_web_userinfo_url = 'https://api.weixin.qq.com/sns/userinfo?access_token=%s&openid=%s&lang=zh_CN'
 wechat_qrcode_url = 'https://api.weixin.qq.com/cgi-bin/qrcode/create?access_token=%s'
 wechat_qrcode_show_url = 'https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=%s'
 wechat_menu_create_url = 'https://api.weixin.qq.com/cgi-bin/menu/create?access_token=%s'
 wechat_redirect_url = 'https://open.weixin.qq.com/connect/oauth2/authorize?appid=' \
     '%s&redirect_uri=%s&response_type=code&scope=%s&state=%s#wechat_redirect'
+wechat_fetch_jsapi_ticket_url = 'https://api.weixin.qq.com/cgi-bin/ticket/getticket?type=jsapi&access_token=%s'
+
 
 cache_access_token = None
 
 class Expirable(object):
     def __init__(self, val, expire_time):
         self.value = val
-        self.expire_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=expire_time)
+        self.expire_time = datetime.datetime.now() + datetime.timedelta(seconds=expire_time)
 
     def val(self):
         return self.value
 
     def is_expired(self):
-        return self.expire_time < datetime.datetime.utcnow()
+        return self.expire_time < datetime.datetime.now()
 
 def generate_redirect_uri(redirect_uri, appid, state, scope='snsapi_base'):
     """ Generate WeChat OAuth redirect uri
@@ -60,10 +63,10 @@ def fetch_web_access_token(appid, appsecret, code):
         return ((None, None), 'Unknown Error')
     return ((access_token, openid), None)
 
-def fetch_userinfo(web_access_token, openid):
+def fetch_web_userinfo(access_token, openid):
     """ Through web access token fetch user info
     """
-    request_url = wechat_userinfo_url % (web_access_token, openid)
+    request_url = wechat_web_userinfo_url % (web_access_token, openid)
     try:
         resp = requests.get(request_url)
     except requests.RequestException:
@@ -102,6 +105,24 @@ def fetch_access_token(appid, appsecret):
             return (None, 'Unknown Error')
         cache_access_token = Expirable(access_token, expires_in)
     return (cache_access_token.val(), None)
+
+def fetch_userinfo(access_token, openid):
+    """ Through web access token fetch user info
+    """
+    request_url = wechat_userinfo_url % (access_token, openid)
+    try:
+        resp = requests.get(request_url)
+    except requests.RequestException:
+        return (None, 'Failed to connect to WeChat server')
+    try:
+        request_json = resp.json()
+    except ValueError:
+        return (None, 'Unable to parse the response data from WeChat server')
+    errcode = request_json.get('errcode', None)
+    if errcode is not None:
+        errmsg = request_json.get('errmsg', 'Unknown Error')
+        return (None, errmsg)
+    return (request_json, None)
 
 def generate_temp_qrcode(access_token, scene_id):
     """ Through access_token and scene_id generate QRCode 
@@ -211,7 +232,7 @@ complex_msg_template = """<xml>
 </xml>"""
 
 article_template = """<item>
-    <Title><![CDATA[@@TITLE]]></Title> 
+    <Title><![CDATA[@@TITLE]]></Title>
     <Description><![CDATA[@@DESCRIPTION]]></Description>
     <PicUrl><![CDATA[@@PICURL]]></PicUrl>
     <Url><![CDATA[@@URL]]></Url>
@@ -250,3 +271,87 @@ def create_complex_msg(openid, wechat_id, articles):
     return xml.replace('@@ARTICLES', ''.join(items))
 
     
+text_msg_template = """<xml>
+    <ToUserName><![CDATA[@@TO_USERNAME]]></ToUserName>
+    <FromUserName><![CDATA[@@FROM_USERNAME]]></FromUserName>
+    <CreateTime>@@CREATE_TIME</CreateTime>
+    <MsgType><![CDATA[text]]></MsgType>
+    <Content><![CDATA[@@CONTENT]]></Content>
+</xml>"""
+
+def create_text_msg(openid, wechat_id, content):
+    """ Create WeChat text message
+    """
+    if content is None:
+        return None
+    xml = text_msg_template.replace('@@TO_USERNAME', openid)
+    xml = xml.replace('@@FROM_USERNAME', wechat_id)
+    now = int((datetime.datetime.now() - datetime.datetime(1970, 1, 1)).total_seconds())
+    xml = xml.replace('@@CREATE_TIME', str(now))
+    xml = xml.replace('@@CONTENT', content)
+    return xml
+
+
+
+def nonceStr():
+	return str(uuid.uuid1()).replace('-', '')
+
+def generateSHA1Sign(d):
+    """ Generate sha1 signature
+    """
+    l = d.items()
+    l = filter(lambda t: t[1] is not None and len(t[1].strip()) > 0, l)
+    l = map(lambda t: '%s=%s' % t, l)
+    l = sorted(l)
+    stringSignTemp = reduce(lambda _1, _2: '%s&%s' % (_1, _2), l)
+    stringSignTemp = stringSignTemp.encode('utf8')
+    sha1Sign = hashlib.sha1(stringSignTemp).hexdigest()
+    return sha1Sign
+
+def fetchJsApiTicket(appid, appsecret):
+    (access_token, err) = fetch_access_token(appid, appsecret)
+    if err is not None:
+        return render_bad_request_response(303, err)
+    try:
+        request_url = wechat_fetch_jsapi_ticket_url % access_token
+        resp = requests.get(request_url)
+    except requests.RequestException:
+        return ((None, None), 'Failed to connect to WeChat server')
+    try:
+        request_json = resp.json()
+    except ValueError:
+        return ((None, None), 'Unable to parse the response data from WeChat server')
+    errcode = request_json.get('errcode', None)
+    if errcode is None or errcode <> 0:
+        errmsg = request_json.get('errmsg', None)
+        return ((None, None), errmsg)
+    ticket = request_json.get('ticket', None)
+    expires_in = request_json.get('expires_in', None)
+    if ticket is None or expires_in is None:
+        return ((None, None), 'Unknown Error')
+    return ticket
+
+
+def createWXConfig(url, jsApiList, appid, appsecret):
+    index = url.find('#')
+    if index <> -1:
+        url = url[:index + 1]
+    NonceStr = nonceStr()
+    jsapi_ticket = fetchJsApiTicket(appid, appsecret)
+    timestamp = str(int(time.mktime(datetime.datetime.now().timetuple())))
+    d = {
+        'noncestr': NonceStr,
+        'jsapi_ticket': jsapi_ticket,
+        'timestamp': timestamp,
+        'url': url
+    }
+    signature = generateSHA1Sign(d)
+    dd = {
+        'debug': False,
+        'appId': appid,
+        'timestamp': timestamp,
+        'nonceStr': NonceStr,
+        'signature': signature,
+        'jsApiList': jsApiList
+    }
+    return dd

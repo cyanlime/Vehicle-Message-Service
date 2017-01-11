@@ -1,0 +1,35 @@
+<CTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title></title>
+</head>
+<body>
+</body>
+<script src="http://res.wx.qq.com/open/js/jweixin-1.0.0.js"></script>
+<script src="/scripts/zepto.min.js"></script>
+
+<script type="text/javascript">
+    $.ajax({
+        type: 'POST',
+        url:'http://car.yijiayinong.com/account/wxJSconfig/',
+        dataType:'application/json',
+        data: JSON.stringify({
+            url: 'http://car.yijiayinong.com/scanQrcode.html',
+            jsApiList: ['scanQRCode']
+        }),
+        success:function(cfg){
+            wx.ready(function() {
+                wx.scanQRCode({
+                    needResult: 0, 
+                    scanType: ["qrCode", "barCode"], 
+                    success:function (res) {
+                        // nothing to do
+                    }
+                });
+            });
+            wx.config(JSON.parse(cfg));
+        }
+    });
+</script>
+</html>
