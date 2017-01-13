@@ -7,6 +7,7 @@ sys.setdefaultencoding('utf8')
 import os, datetime, urlparse, jwt
 from jwt.exceptions import DecodeError, ExpiredSignatureError
 from django.conf import settings as django_settings
+from django.core.exceptions import ObjectDoesNotExist
 from . import settings
 from .models import Vehicle, Article, WeChat
 import datetime, time, json
@@ -65,49 +66,69 @@ def get_articles(key):
         objs.append(obj)
     return objs
 
-def synwxuserinfo(vehicle_id):
+# def synwxuserinfo(vehicle_id):
+#     """ Synchronization WeChat user's info
+#     """
+#     binding_wxusers = []
+#     instances = WeChat.objects.filter(vehicle=vehicle_id).filter(bind=True)
+#     for instance in instances:
+#         instance_id = instance.id
+#         instance_openid = instance.openid
+#         instance_bind = instance.bind
+#         if instance.syntime+datetime.timedelta(days=7)<datetime.datetime.now() or len(instance.info)==0:
+#             (access_token, err) = wechat.fetch_access_token(settings.APP_ID, settings.APP_SECRET)     
+#             if err is not None:
+#                 return render_bad_request_response(-1, "Bad Request")
+#             (userinfo, err) = wechat.fetch_userinfo(access_token, instance_openid)
+#             if err is not None:
+#                 return render_bad_request_response(-1, "Bad Request")
+#             instance.info = json.dumps(userinfo)
+#             instance.syntime = datetime.datetime.now()
+#             instance.save()     
+#         instance_info = json.loads(instance.info)
+#         name = instance_info.get('nickname')
+#         head_portrait = instance_info.get('headimgurl')
+#         instance_syntime = instance.syntime
+#         timestamp_instance_syntime = time.mktime(instance_syntime.timetuple())
+#         binding_wxuser = {'wechatid': instance_id,
+#             'info': {'name': name, 'head_portrait': head_portrait}, 'syntime': timestamp_instance_syntime}
+#         binding_wxusers.append(binding_wxuser)       
+#     return binding_wxusers
+
+def synwxuserinfo(wechat_id):
     """ Synchronization WeChat user's info
     """
-    binding_wxusers = []
-    instances = WeChat.objects.filter(vehicle=vehicle_id).filter(bind=True)
-    for instance in instances:
-        instance_id = instance.id
-        instance_openid = instance.openid
-        instance_bind = instance.bind
-        if instance.syntime+datetime.timedelta(days=7)<datetime.datetime.now() or len(instance.info)==0:
-            (access_token, err) = wechat.fetch_access_token(settings.APP_ID, settings.APP_SECRET)     
-            if err is not None:
-                return render_bad_request_response(-1, "Bad Request")
-            (userinfo, err) = wechat.fetch_userinfo(access_token, instance_openid)
-            if err is not None:
-                return render_bad_request_response(-1, "Bad Request")
-            instance.info = json.dumps(userinfo)
-            instance.syntime = datetime.datetime.now()
-            instance.save()     
-        instance_info = json.loads(instance.info)
-        name = instance_info.get('nickname')
-        head_portrait = instance_info.get('headimgurl')
-        instance_syntime = instance.syntime
-        timestamp_instance_syntime = time.mktime(instance_syntime.timetuple())
-        binding_wxuser = {'wechatid': instance_id,
-            'info': {'name': name, 'head_portrait': head_portrait}, 'syntime': timestamp_instance_syntime}
-        binding_wxusers.append(binding_wxuser)       
-    return binding_wxusers
+    try:
+        instance = WeChat.objects.get(pk=wechat_id)
+    except ObjectDoesNotExist:
+        wechat_user = {'code': 1, 'result': {'errmsg': "WeChat user not found."}}
+        return JsonResponse(wechat_user)
+    if instance.syntime+datetime.timedelta(days=7)<datetime.datetime.now() or len(instance.info)==0:
+        (access_token, err) = wechat.fetch_access_token(settings.APP_ID, settings.APP_SECRET)     
+        if err is not None:
+            return render_bad_request_response(-1, "Bad Request")
+        (userinfo, err) = wechat.fetch_userinfo(access_token, instance.openid)
+        if err is not None:
+            return render_bad_request_response(-1, "Bad Request")
+        instance.info = json.dumps(userinfo)
+        instance.syntime = datetime.datetime.now()
+        instance.save()
+    instance_info = json.loads(instance.info)
+    name = instance_info.get('nickname')
+    head_portrait = instance_info.get('headimgurl')
+    instance_syntime = instance.syntime
+    timestamp_instance_syntime = time.mktime(instance_syntime.timetuple())
+    #return (wechat_id, name, head_portrait, timestamp_instance_syntime)
+    binding_wxuser = {'wechatid': wechat_id,
+        'info': {'name': name, 'head_portrait': head_portrait}, 'syntime': timestamp_instance_syntime}
+    return binding_wxuser
 
-# def now():
-# 	return int(time.mktime(datetime.now().timetuple()))
+def get_wechat(wechat_id):
+    # pass
+    return wechat
 
-# def nonceStr():
-# 	return str(uuid.uuid1()).replace('-', '')
-
-# def generateSHA1Sign(d):
-#     """ Generate sha1 signature
-#     """
-#     l = d.items()
-#     l = filter(lambda t: t[1] is not None and len(t[1].strip()) > 0, l)
-#     l = map(lambda t: '%s=%s' % t, l)
-#     l = sorted(l)
-#     stringSignTemp = reduce(lambda _1, _2: '%s&%s' % (_1, _2), l)
-#     stringSignTemp = stringSignTemp.encode('utf8')
-#     sha1Sign = hashlib.sha1(stringSignTemp).hexdigest()
-#     return sha1Sign
+def get_wechats(vehicle_id):
+    # pass
+    for xxx:
+        get_wechat()
+    return wechats

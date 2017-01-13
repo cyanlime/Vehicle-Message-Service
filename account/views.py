@@ -20,13 +20,15 @@ from .common import (
     get_vehicle_by_id,
     get_wechat_by_id,
     vehicle_token_authenticate,
-    wechat_authenticate
+    wechat_authenticate,
+    wechat_token_authenticate
     )
 import wechat
 from . import settings
 from . import utils
 from .models import Vehicle, WeChat
 import datetime, time
+from pypack import PyPack
 
 # Create your views here.
 
@@ -138,7 +140,6 @@ class WeChatEventsView(View):
             vehicle = Vehicle.objects.get(pk=scene_id)
         except ObjectDoesNotExist:
             return render_bad_request_response(-1, "Register vehicle not found")
-
         welcome_str = ''
         if with_subscribe:
             welcome_str = u'感谢您关注车友同行公众号！这里可以帮您把手机和车机绑定的一起哦。'\
@@ -148,13 +149,20 @@ class WeChatEventsView(View):
             instance.vehicle = vehicle
             instance.bind = True
             instance.save()
+            msg = json.dumps({
+                'action': 'bind',
+                'wechat_id': instance.id,
+                'wechat_info': json.loads(instance.info),
+                'vehicle_vin': vehicle.vin
+            })
+            PyPack.commit('vehicle', msg, 2)
             xml = wechat.create_text_msg(from_username, to_username,
                 welcome_str + u'您已成功绑定车机%s，如需绑定新车机，'\
-                    u'请先<a href="http://car.yijiayinong.com/remove_binding.html">解绑</a>。' % vehicle.vin)
+                    u'请先<a href="http://car.yijiayinong.com/account/web_remove_binding/">解绑</a>。' % vehicle.vin)
         else:
             xml = wechat.create_text_msg(from_username, to_username,
                 welcome_str + u'您已绑定车机%s，如需绑定新车机，'\
-                    u'请先<a href="http://car.yijiayinong.com/remove_binding.html">解绑</a>。' % vehicle.vin)
+                    u'请先<a href="http://car.yijiayinong.com/account/web_remove_binding/">解绑</a>。' % vehicle.vin)
         if xml is not None:
             return HttpResponse(
                 xml, content_type='text/xml'
@@ -173,9 +181,12 @@ class WeChatEventsView(View):
                     u'您当前尚未绑定设备哦，如需绑定，'\
                     u'请先<a href="http://car.yijiayinong.com/scanQrcode.html">扫一扫</a>，对准设备上的二维码即可！')
         else:
-             xml = wechat.create_text_msg(from_username, to_username, welcome_str+\
-                    u'您已绑定车机%s，如需绑定新车机，'\
-                    u'请先<a href="http://car.yijiayinong.com/remove_binding.html">解绑</a>。' % instance.vehicle.vin)
+            remove_binding_url = wechat.generate_redirect_uri(
+                'http://car.yijiayinong.com/account/web_remove_binding/',
+                settings.APP_ID, '')
+            xml = wechat.create_text_msg(from_username, to_username, welcome_str+\
+                u'您已绑定车机%s，如需绑定新车机，'\
+                u'请先<a href="%s">解绑</a>。' % (instance.vehicle.vin, remove_binding_url))
         if xml is not None:
             return HttpResponse(
                 xml, content_type='text/xml'
@@ -196,12 +207,40 @@ class WeChatEventsView(View):
             else:
                 xml = wechat.create_text_msg(from_username, to_username,
                     u'您绑定的车机号为：%s。如需绑定新车机，'\
-                    u'请先<a href="http://car.yijiayinong.com/remove_binding.html">解绑</a>。' % instance.vehicle.vin)
+                    u'请先<a href="http://car.yijiayinong.com/account/web_remove_binding/">解绑</a>。' % instance.vehicle.vin)
         if xml is not None:
             return HttpResponse(
                 xml, content_type='text/xml'
             )
         return HttpResponse('')
+
+    def handle_location_send(self, from_username, to_username, event_key, send_location_info):
+        instance, created = WeChat.objects.get_or_create(openid=from_username)
+
+        if send_location_info is not None:
+            location_x = send_location_info.find('Location_X').text
+            location_y = send_location_info.find('Location_Y').text
+            scale = send_location_info.find('Scale').text
+            label = send_location_info.find('Label').text
+            poi_nam = send_location_info.find('Poiname').text
+
+            msg = json.dumps({
+                    'action': 'send_location_info',
+                    'wechat_id': instance.id,
+                    'wechat_info': json.loads(instance.info),
+                    'wechat_vehicle_vin': instance.vehicle.vin,
+                    'location_info': {
+                        'location_X': location_x,
+                        'location_Y': location_y,
+                        'scale': scale,
+                        'label': label,
+                        'poiname': poi_nam,
+                    }
+                })
+        else:
+            msg = json.dumps({'code': 1, 'result': {'errmsg': "Incoming parameter value send_location_info missing."}})
+        PyPack.commit('vehicle', msg, 2)
+
 
     def parse_xml(self, xml):
         """ Parse XML Date Package
@@ -214,10 +253,13 @@ class WeChatEventsView(View):
         event_node = xml_tree.find('Event')
         event_key_node = xml_tree.find('EventKey')
         ticket_node = xml_tree.find('Ticket')
+        send_location_info = xml_tree.find('SendLocationInfo')
+
         if to_username_node is None or from_username_node is None \
             or create_time_node is None or msg_type_node is None \
             or event_node is None:
             return render_bad_request_response(-1, "Bad Request")
+
         to_username = to_username_node.text
         from_username = from_username_node.text
         create_time = create_time_node.text
@@ -235,6 +277,10 @@ class WeChatEventsView(View):
             return self.handle_bind(from_username, to_username, event_key, False)
         elif event == 'CLICK':
             return self.handle_click(from_username, to_username, event_key)
+
+        elif event == 'location_select':
+            return self.handle_location_send(from_username, to_username, event_key, send_location_info)
+
         else:
             return render_bad_request_response(-1, "Unhandled Event")
 
@@ -277,11 +323,15 @@ def bound_vehicles(request):
     vehicle_vin = vehicle.vin
     vehicle_create_time = vehicle.create_time
     timestamp_vehicle_create_time = time.mktime(vehicle_create_time.timetuple())
-
-    binding_wxuser = utils.synwxuserinfo(vehicle_id)
+    binding_wxusers = []
+    instances = WeChat.objects.filter(vehicle=vehicle_id).filter(bind=True)
+    for instance in instances:
+        syn_wxuser_info = utils.synwxuserinfo(instance.id)
+        binding_wxusers.append(syn_wxuser_info)
     bundled_accounts = {'code': 0, 'result': {'vehicle_id': vehicle_id,
-        'create_time': timestamp_vehicle_create_time, 'vin': vehicle_vin, 'WXUsers': binding_wxuser}}
+        'create_time': timestamp_vehicle_create_time, 'vin': vehicle_vin, 'WXUsers': binding_wxusers}}
     return JsonResponse(bundled_accounts)
+
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -302,6 +352,8 @@ def remove_binding(request):
         request_json = json.loads(request.body)
     except ValueError:
         return render_bad_request_response(101, 'Incorrect json format')
+    #request_json = json.loads(request.body)
+
     wechat_id = request_json.get('wechat_id')
     if len(wechat_id)==0:
         unbinding_accounts = {'code': 1, 'result': {'errmsg': "Incoming parameter value wechat_id missing."}}
@@ -312,6 +364,13 @@ def remove_binding(request):
     if wechat.vehicle.id==vehicle_id and wechat.bind==True:
         wechat.bind = False
         wechat.save()
+        msg = json.dumps({
+            'action': 'unbind',
+            'wechat_id': wechat_id,
+            'wechat_info': json.loads(wechat.info),
+            'vehicle_vin': vehicle.vin
+        })
+        PyPack.commit('vehicle', msg, 2)
         unbinding_accounts = {'code': 0, 'result': {'msg': "Remove binding successfully."}}
         return JsonResponse(unbinding_accounts)
     else:
@@ -335,13 +394,28 @@ def wxJSconfig(request):
     return JsonResponse(wxJSconfig)
 
 @csrf_exempt
-@require_http_methods(["POST"])
+@require_http_methods(["GET"])
 def web_remove_binding(request):
     """ Remove binding Interface, Web
     """
-    token = fetch_token(request)
-    if token is None:
-        return render_bad_request_response(301, 'Missing authorization header')
+
+    # redirect_uri = wechat.generate_redirect_uri('http://car.yijiayinong.com/remove_binding.html', 
+    #     settings.APP_ID, '', scope='snsapi_base')
+
+    # code = request.GET.get('code')
+    # state = request.GET.get('state')
+    # if code is None or state is None:
+    #     redirect_status = {'code': 1, 'result': {'errmsg': "Code or State missing."}}
+    #     return JsonResponse(redirect_status)
+
+    # wechat.fetch_web_access_token(settings.APP_ID, settings.APP_SECRET, code)
+
+    code = request.GET.get('code')
+    if code is None:
+        return render_bad_request_response(201, 'Missing parameter code')
+    (token, err) = wechat_authenticate(code)
+    if err is not None:
+        return render_bad_request_response(201, err)
     (wechat_id, err) = wechat_token_authenticate(token)
     if err is not None:
         return render_bad_request_response(302, err)
@@ -352,7 +426,30 @@ def web_remove_binding(request):
         wechat.bind = False
         wechat.save()
         unbinding_accounts = {'code': 0, 'result': {'msg': "Remove binding successfully."}}
-        return JsonResponse(unbinding_accounts)
+        from django.shortcuts import render_to_response
+        return render_to_response('remove_binding.html', {'remove_binding': True})
+        # return JsonResponse(unbinding_accounts)
     else:
         unbinding_accounts = {'code': 1, 'result': {'errmsg': "WXUser doesn't bind to the vehicle."}}
-        return JsonResponse(unbinding_accounts)
+        from django.shortcuts import render_to_response
+        return render_to_response('remove_binding.html', {'remove_binding': False})
+        # return JsonResponse(unbinding_accounts)
+
+
+    # token = fetch_token(request)
+    # if token is None:
+    #     return render_bad_request_response(301, 'Missing authorization header')
+    # (wechat_id, err) = wechat_token_authenticate(token)
+    # if err is not None:
+    #     return render_bad_request_response(302, err)
+    # wechat = get_wechat_by_id(wechat_id)
+    # if wechat.vehicle is None:
+    #     return render_bad_request_response(201, 'No related vehicle found')
+    # if wechat.bind==True:
+    #     wechat.bind = False
+    #     wechat.save()
+    #     unbinding_accounts = {'code': 0, 'result': {'msg': "Remove binding successfully."}}
+    #     return JsonResponse(unbinding_accounts)
+    # else:
+    #     unbinding_accounts = {'code': 1, 'result': {'errmsg': "WXUser doesn't bind to the vehicle."}}
+    #     return JsonResponse(unbinding_accounts)

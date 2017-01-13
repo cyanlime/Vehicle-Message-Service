@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/1.10/ref/settings/
 """
 
 import os
+import hub
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_gevent',
     'account',
     'navigation',
 ]
@@ -57,8 +59,8 @@ ROOT_URLCONF = 'Vehicle_Message_Service.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
+        'DIRS': [os.path.join(BASE_DIR, 'web')],
+        'APP_DIRS': False,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
@@ -135,3 +137,7 @@ MEDIA_URL = '/media/'
 # Custom website root dir
 
 WEB_ROOT = os.path.join(BASE_DIR, 'web')
+
+# For Django Gevent TCP Server
+
+TCPHANDLER = hub.TCPHandler
