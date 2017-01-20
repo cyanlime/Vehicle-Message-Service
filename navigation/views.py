@@ -45,7 +45,7 @@ def sync_points(request):
             return JsonResponse(accounts_position)
         timestamp_position_time = linearr[4]
         position_time = datetime.datetime.fromtimestamp(int(timestamp_position_time))
-        points.append(Point(vehicle=vehicle, longitude=linearr[0], latitude=linearr[1], 
+        points.append(Point(vehicle=vehicle, longitude=linearr[0], latitude=linearr[1],
             bearing=linearr[2], speed=linearr[3], time=position_time))
     Point.objects.bulk_create(points)
     accounts_position = {'code': 0, 'result': {'msg': "Location information upload successfully."}}
@@ -137,5 +137,13 @@ def series_point(request):
     wechat_vehicle_createtime = wechat.vehicle.create_time
     timestamp_point_time = time.mktime(wechat_vehicle_createtime.timetuple())
     account_traces = {'code': 0, 'result': {'points': point_set, 'account': {
-        'vehicle_id': wechat.vehicle.id, 'vin': wechat.vehicle.vin, 'create_time': wechat_vehicle_createtime}}}
+        'vehicle_id': wechat.vehicle.id, 'vin': wechat.vehicle.vin, 'create_time': timestamp_point_time}}}
     return JsonResponse(account_traces)
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def current_time(request):
+    # #year = datetime.date.today().year
+    timestamp_now = time.time()
+    current_timestamp = {'code': 0, 'result': {'current_time': timestamp_now}}
+    return JsonResponse(current_timestamp)

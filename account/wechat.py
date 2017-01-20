@@ -220,6 +220,7 @@ def create_menu(menu_json, appid, appsecret):
         return errmsg
     return None
 
+
 complex_msg_template = """<xml>
     <ToUserName><![CDATA[@@TO_USERNAME]]></ToUserName>
     <FromUserName><![CDATA[@@FROM_USERNAME]]></FromUserName>
@@ -270,7 +271,7 @@ def create_complex_msg(openid, wechat_id, articles):
         items.append(item_xml)
     return xml.replace('@@ARTICLES', ''.join(items))
 
-    
+
 text_msg_template = """<xml>
     <ToUserName><![CDATA[@@TO_USERNAME]]></ToUserName>
     <FromUserName><![CDATA[@@FROM_USERNAME]]></FromUserName>
@@ -290,8 +291,6 @@ def create_text_msg(openid, wechat_id, content):
     xml = xml.replace('@@CREATE_TIME', str(now))
     xml = xml.replace('@@CONTENT', content)
     return xml
-
-
 
 def nonceStr():
 	return str(uuid.uuid1()).replace('-', '')
@@ -330,7 +329,6 @@ def fetchJsApiTicket(appid, appsecret):
     if ticket is None or expires_in is None:
         return ((None, None), 'Unknown Error')
     return ticket
-
 
 def createWXConfig(url, jsApiList, appid, appsecret):
     index = url.find('#')

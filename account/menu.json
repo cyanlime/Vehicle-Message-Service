@@ -6,7 +6,7 @@
                 {
                     "type": "view",
                     "name": "查询位置",
-                    "url": "http://@@HOSTNAME/navigation/location/"
+                    "url": "https://open.weixin.qq.com/connect/oauth2/authorize?appid=wxf1cad953c13fccfc&redirect_uri=http%3a%2f%2fcar.yijiayinong.com%2fmap_loca.html&response_type=code&scope=snsapi_base&state=#wechat_redirect"
                 },
                 {
                     "name": "快速导航",
@@ -16,7 +16,7 @@
                 {
                     "type": "view",
                     "name": "行驶轨迹",
-                    "url": "http://@@HOSTNAME/navigation/path/"
+                    "url": "https://open.weixin.qq.com/connect/oauth2/authorize?appid=wxf1cad953c13fccfc&redirect_uri=http%3a%2f%2fcar.yijiayinong.com%2findex.html&response_type=code&scope=snsapi_base&state=#wechat_redirect"
                 },
                 {
                     "type": "click",
@@ -28,7 +28,7 @@
         {
             "type": "view",
             "name": "流量卡",
-            "url": "http://@@HOSTNAME/traffic/"
+            "url": "https://open.weixin.qq.com/connect/oauth2/authorize?appid=wxf1cad953c13fccfc&redirect_uri=http%3a%2f%2fcar.yijiayinong.com%2fflow_card.html&response_type=code&scope=snsapi_base&state=#wechat_redirect"
         },
         {
             "type": "click",

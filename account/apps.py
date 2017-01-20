@@ -41,5 +41,5 @@ class AccountConfig(AppConfig):
     def ready(self):
         # Refer https://docs.djangoproject.com/en/dev/ref/applications/#django.apps.AppConfig.ready
         cmd = sys.argv[1]
-        if cmd == 'runserver':
+        if cmd == 'runserver' or cmd== 'rungevent':
             self.reg_menu()
