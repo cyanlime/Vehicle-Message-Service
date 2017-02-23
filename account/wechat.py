@@ -293,7 +293,7 @@ def create_text_msg(openid, wechat_id, content):
     return xml
 
 def nonceStr():
-	return str(uuid.uuid1()).replace('-', '')
+    return str(uuid.uuid1()).replace('-', '')
 
 def generateSHA1Sign(d):
     """ Generate sha1 signature

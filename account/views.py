@@ -159,7 +159,7 @@ class WeChatEventsView(View):
                 'wechat_info': json.loads(instance.info or {}),
                 'vehicle_vin': vehicle.vin
             })
-            PyPack.commit('vehicle', msg, 2)
+            PyPack.commit('vehicle:' + vehicle.vin, msg, 2)
             xml = wechat.create_text_msg(from_username, to_username,
                 welcome_str + u'您已成功绑定车机%s。如需绑定新车机，'\
                     u'请先<a href="%s">解绑</a>。' % (instance.vehicle.vin, remove_binding_url))
@@ -172,7 +172,7 @@ class WeChatEventsView(View):
                 xml, content_type='text/xml'
             )
         return HttpResponse('')
-       
+
     def handle_subscribe(self, from_username, to_username):
         """ Handle WeChat Subscribe event
         """
@@ -226,10 +226,27 @@ class WeChatEventsView(View):
             )
         return HttpResponse('')
 
-    def handle_location_send(self, from_username, to_username, event_key, send_location_info):
+    def handle_location(self, from_username, to_username):
+        """ Handle WeChat Receive Location Message
+        """
         instance, created = WeChat.objects.get_or_create(openid=from_username)
-        if instance.vehicle is None:
-            return HttpResponse("success")
+        if instance.vehicle is None or instance.bind==False:
+            xml = wechat.create_text_msg(from_username, to_username,
+                u'您当前尚未绑定设备哦，如需绑定，'\
+                u'点击<a href="http://car.yijiayinong.com/scanQrcode.html">扫一扫</a>，对准设备上的二维码即可！')
+            if xml is not None:
+                return HttpResponse(
+                    xml, content_type='text/xml'
+                )
+        else:
+            return HttpResponse("")
+
+    def handle_location_send(self, from_username, to_username, event_key, send_location_info):
+        """ Handle WeChat location_select Push Event
+        """
+        instance, created = WeChat.objects.get_or_create(openid=from_username)
+        if instance.vehicle is None or instance.bind==False:
+            pass
         else:
             if send_location_info is not None:
                 location_x = send_location_info.find('Location_X').text
@@ -254,7 +271,7 @@ class WeChatEventsView(View):
                     })
             else:
                 msg = json.dumps({'code': 1, 'result': {'errmsg': "Incoming parameter value send_location_info missing."}})
-            PyPack.commit('vehicle', msg, 2)
+            PyPack.commit('vehicle:' + instance.vehicle.vin, msg, 2)
             return HttpResponse("success")
 
     def parse_xml(self, xml):
@@ -271,18 +288,19 @@ class WeChatEventsView(View):
         send_location_info = xml_tree.find('SendLocationInfo')
 
         if to_username_node is None or from_username_node is None \
-            or create_time_node is None or msg_type_node is None \
-            or event_node is None:
+            or create_time_node is None or msg_type_node is None:
             return render_bad_request_response(-1, "Bad Request")
 
         to_username = to_username_node.text
         from_username = from_username_node.text
         create_time = create_time_node.text
         msg_type = msg_type_node.text
-        event = event_node.text
+        event = event_node.text if event_node is not None else ''
         event_key = event_key_node.text if event_key_node is not None else ''
         ticket = ticket_node.text if ticket_node is not None else ''
         #print('An Incoming message from wechat: (from_username: %s, event: %s, event_key: %s)' % (from_username, event, event_key))
+        if msg_type == 'location':
+            return self.handle_location(from_username, to_username)
         if event == 'subscribe':
             if event_key is not None and len(event_key) > 0:
                 return self.handle_bind(from_username, to_username, event_key[len('qrscene_'):], True)
@@ -381,7 +399,7 @@ def remove_binding(request):
             'wechat_info': json.loads(wechat.info),
             'vehicle_vin': vehicle.vin
         })
-        PyPack.commit('vehicle', msg, 2)
+        PyPack.commit('vehicle:' + vehicle.vin, msg, 2)
         unbinding_accounts = {'code': 0, 'result': {'msg': "Remove binding successfully."}}
         return JsonResponse(unbinding_accounts)
     else:

@@ -75,7 +75,7 @@ def synwxuserinfo(wechat_id):
         wechat_user = {'code': 1, 'result': {'errmsg': "WeChat user not found."}}
         return JsonResponse(wechat_user)
     if instance.syntime+datetime.timedelta(days=7)<datetime.datetime.now() or len(instance.info)==0:
-        (access_token, err) = wechat.fetch_access_token(settings.APP_ID, settings.APP_SECRET)     
+        (access_token, err) = wechat.fetch_access_token(settings.APP_ID, settings.APP_SECRET)
         if err is not None:
             return render_bad_request_response(-1, "Bad Request")
         (userinfo, err) = wechat.fetch_userinfo(access_token, instance.openid)
